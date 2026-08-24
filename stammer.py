@@ -9,6 +9,9 @@ import shutil
 import subprocess
 import sys
 import io
+import time
+from itertools import islice
+import os
 
 from PIL import Image
 import tempfile
@@ -98,7 +101,7 @@ def get_framecount(path):
 
 
 
-def build_output_video(video_handler: VideoHandler, matcher):
+def build_output_video(video_handler: VideoHandler, matcher, index_conversion):
     logging.info("building output video")
 
     def tesselate_composite(match_row, basis_coefficients, i):
@@ -107,7 +110,7 @@ def build_output_video(video_handler: VideoHandler, matcher):
         used_coeffs = [(j, coefficient) for j, coefficient in enumerate(basis_coefficients) if coefficient != 0]
         for k, coeff in used_coeffs:
             frame_num = min(match_row[k], video_handler.framecount - 1)
-            tiles.append(Image.open(video_handler.get_frame(frame_num)))
+            tiles.append(Image.open(video_handler.get_frame(index_conversion[frame_num])))
             hot_bits,_ = fraction_bits.as_array(coeff)
             bits.append(hot_bits)
         tesselation = image_tiling.Tiling(height=tiles[0].height,width=tiles[0].width)
@@ -141,7 +144,13 @@ def build_output_video(video_handler: VideoHandler, matcher):
             elapsed_time_in_carrier = match_num * audio_frame_length + time_past_start_of_audio_frame
             carrier_video_frame = int(elapsed_time_in_carrier / video_frame_length)
             carrier_video_frame = min(carrier_video_frame, int(video_handler.framecount - 1))
-            video_handler.write_frame(video_frame_i,video_handler.get_frame(carrier_video_frame))
+            # To correct for division errors:
+            if carrier_video_frame not in index_conversion:
+                if carrier_video_frame - 1 in index_conversion:
+                    carrier_video_frame -= 1
+                elif carrier_video_frame + 1 in index_conversion:
+                    carrier_video_frame += 1
+            video_handler.write_frame(video_frame_i,video_handler.get_frame(index_conversion[carrier_video_frame]))
 
     elif type(matcher) == CombinedFrameAudioMatcher:
         basis_coefficients = matcher.get_basis_coefficients()
@@ -180,6 +189,12 @@ def get_audio_as_wav_bytes(path):
 
     return io.BytesIO(bytes(ff_out))
 
+def chunks(input_list, n):
+    output = []
+    for i in range(0, len(input_list), n):
+        output.append(input_list[i:n+i])
+    return output
+
 def process(carrier_path, modulator_path, output_path, custom_frame_length, matcher_mode, video_mode, color_mode, min_cached_frames):
     if not carrier_path.is_file():
         raise FileNotFoundError(f"Carrier file {carrier_path} not found.")
@@ -193,11 +208,9 @@ def process(carrier_path, modulator_path, output_path, custom_frame_length, matc
     video_in_mem = (video_mode == "mem_decay")
 
     if 'video' in carrier_type:
-        output_is_audio = is_audio_filename(output_path)
-        carrier_is_video = not output_is_audio
-
+    
         logging.info("Calculating video length")
-
+    
         carrier_framecount = float(get_framecount(carrier_path))
         video_frame_length = carrier_duration / carrier_framecount
         if custom_frame_length is None:
@@ -205,28 +218,7 @@ def process(carrier_path, modulator_path, output_path, custom_frame_length, matc
         else:
             frame_length = float(custom_frame_length)
 
-        if not output_is_audio and not video_in_mem:
-            logging.info("Separating video frames")
-            frames_dir = TEMP_DIR / 'frames'
-            frames_dir.mkdir()
-
-            call = video_out.apply_color_mode([
-                    'ffmpeg',
-                    '-v', 'quiet', '-stats',
-                    '-i', str(carrier_path),
-                    'include_color_mode',
-                    str(frames_dir / 'frame%06d.png')
-            ],color_mode)
-
-            subprocess.run(call,check=True)
-
-    elif 'audio' in carrier_type:
-        carrier_is_video = False
-        if custom_frame_length is None:
-            frame_length = DEFAULT_FRAME_LENGTH
-        else:
-            frame_length = float(custom_frame_length)
-    else:
+    if 'video' not in carrier_type and 'audio' not in carrier_type:
         logging.error(f"Unrecognized file type: {carrier_path}. Should be audio or video")
         return
 
@@ -253,6 +245,66 @@ def process(carrier_path, modulator_path, output_path, custom_frame_length, matc
     logging.info("creating output audio")
     matcher.make_output_audio(TEMP_DIR / 'out.wav')
 
+    index_conversion = {}
+
+    if 'video' in carrier_type:
+        chosen_frames = matcher.best_matches
+        chosen_frames = sorted(chosen_frames)
+        frames2 = []
+        i = -1
+        our_index = 0
+        new_index = 0
+        for frame in chosen_frames:
+            # No duplicates
+            if chosen_frames[i] != frame:
+                frames2.append(str(frame))
+                index_conversion[frame] = our_index
+                our_index += 1
+            i += 1
+
+        # Batch in chunks of 200 to ensure no excessive commmand lengths
+        n = 200
+        frames2 = chunks(frames2, n)
+
+        output_is_audio = is_audio_filename(output_path)
+        carrier_is_video = not output_is_audio
+    
+        if not output_is_audio and not video_in_mem:
+            logging.info("Separating video frames")
+            frames_dir = TEMP_DIR / 'frames'
+            frames_dir.mkdir()
+
+            i = 0
+            current_index = len(frames2)
+
+            # Iterate backwards for easier file renaming and no overwrites
+            while current_index > 0:
+                current_index -= 1
+                frames = frames2[current_index]
+                select_string = "'eq(n\\," + ")+eq(n\\,".join(frames) + ")'"
+        
+                call = video_out.apply_color_mode([
+                        'ffmpeg',
+                        '-v', 'quiet', '-stats',
+                        '-i', str(carrier_path),
+                        '-vf', 'select=' + select_string,
+                        '-vsync', '0',
+                        'include_color_mode',
+                        str(frames_dir / 'frame%06d.png')
+                ],color_mode)
+        
+                subprocess.run(call,check=True)
+
+                for i in range(1, len(frames) + 1, 1):
+                    os.rename(frames_dir / ('frame%06d.png' % (i,)), frames_dir / ('frame%06d.png' % (i + (n * (current_index)),)))
+    
+    elif 'audio' in carrier_type:
+        carrier_is_video = False
+        if custom_frame_length is None:
+            frame_length = DEFAULT_FRAME_LENGTH
+        else:
+            frame_length = float(custom_frame_length)
+
     if carrier_is_video:
         if video_mode == "mem_decay":
             handler = VideoHandlerMem(carrier_path,output_path,TEMP_DIR,matcher,carrier_framecount,video_frame_length,color_mode)
@@ -261,7 +313,7 @@ def process(carrier_path, modulator_path, output_path, custom_frame_length, matc
         elif video_mode == "disk":
             handler = VideoHandlerDisk(carrier_path,output_path,TEMP_DIR,matcher,carrier_framecount,video_frame_length,color_mode)
 
-        build_output_video(handler, matcher)
+        build_output_video(handler, matcher, index_conversion)
     else:
         subprocess.run(
             [
@@ -274,6 +326,7 @@ def process(carrier_path, modulator_path, output_path, custom_frame_length, matc
         )
 
 def main():
+    start = time.time()
     logging.basicConfig(format='%(message)s', level=logging.INFO)
 
     # check required command line tools
@@ -303,6 +356,10 @@ def main():
         global TEMP_DIR
         TEMP_DIR = Path(tempdir)
         process(**vars(args))
+
+    duration = time.time() - start
+
+    print(duration)
 
 
 if __name__ == '__main__':
