@@ -157,7 +157,12 @@ def build_output_video(video_handler: VideoHandler, matcher):
     video_handler.complete()
 
 def is_audio_filename(name):
-    return Path(name).suffixes[0][1:] in COMMON_AUDIO_EXTS
+    _path = Path(name)
+
+    # Turns out Path.suffixes is empty for dotfiles (".mp4").
+    ext = _path.suffixes[-1][1:] if _path.suffixes else _path.stem
+
+    return ext in COMMON_AUDIO_EXTS
 
 def get_audio_as_wav_bytes(path):
     ff_out = bytearray(subprocess.check_output(
