@@ -106,7 +106,7 @@ def build_output_video(video_handler: VideoHandler, matcher, index_conversion):
         used_coeffs = [(j, coefficient) for j, coefficient in enumerate(basis_coefficients) if coefficient != 0]
         for k, coeff in used_coeffs:
             frame_num = min(match_row[k], video_handler.framecount - 1)
-            tiles.append(Image.open(video_handler.get_frame(index_conversion[frame_num])))
+            tiles.append(Image.open(video_handler.get_frame(frame_num)))
             hot_bits,_ = fraction_bits.as_array(coeff)
             bits.append(hot_bits)
         tesselation = image_tiling.Tiling(height=tiles[0].height,width=tiles[0].width)
@@ -146,7 +146,7 @@ def build_output_video(video_handler: VideoHandler, matcher, index_conversion):
                     carrier_video_frame -= 1
                 elif carrier_video_frame + 1 in index_conversion:
                     carrier_video_frame += 1
-            video_handler.write_frame(video_frame_i,video_handler.get_frame(index_conversion[carrier_video_frame]))
+            video_handler.write_frame(video_frame_i,video_handler.get_frame(carrier_video_frame))
 
     elif type(matcher) == CombinedFrameAudioMatcher:
         basis_coefficients = matcher.get_basis_coefficients()
@@ -249,7 +249,7 @@ def process(carrier_path, modulator_path, output_path, custom_frame_length, matc
 
         # Batch in chunks to ensure no excessive commmand lengths
         n = 100
-        frame_chunks = chunks_of_n(list(index_conversion.keys()), n)
+        frame_chunks = chunks_of_n(used_frames, n)
 
         output_is_audio = is_audio_filename(output_path)
         carrier_is_video = not output_is_audio
@@ -283,10 +283,10 @@ def process(carrier_path, modulator_path, output_path, custom_frame_length, matc
         
                 subprocess.run(call,check=True)
 
-                for i in range(1, len(frame_strings) + 1, 1):
+                for i, frame in reversed(list(enumerate(frame_chunks[current_index]))):
                     os.rename(
-                        frames_dir / ('frame%06d.png' % (i,)),
-                        frames_dir / ('frame%06d.png' % (i + (n * (current_index)),))
+                        frames_dir / ('frame%06d.png' % (i + 1,)),
+                        frames_dir / ('frame%06d.png' % (frame,))
                     )
             print() # free newline? how convenient
     
