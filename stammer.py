@@ -5,12 +5,8 @@ from typing import List
 import numpy as np
 from scipy.io import wavfile
 from pathlib import Path
-import shutil
 import subprocess
-import sys
 import io
-import time
-from itertools import islice
 import os
 
 from PIL import Image
@@ -253,19 +249,16 @@ def process(carrier_path, modulator_path, output_path, custom_frame_length, matc
     index_conversion = {}
 
     if 'video' in carrier_type:
-        chosen_frames = matcher.best_matches
+        chosen_frames = set(matcher.best_matches)
         chosen_frames = sorted(chosen_frames)
         frames2 = []
         i = -1
         our_index = 0
-        new_index = 0
         for frame in chosen_frames:
             # No duplicates
-            if chosen_frames[i] != frame:
-                frames2.append(str(frame))
-                index_conversion[frame] = our_index
-                our_index += 1
-            i += 1
+            frames2.append(str(frame))
+            index_conversion[frame] = our_index
+            our_index += 1
 
         # Batch in chunks of 200 to ensure no excessive commmand lengths
         n = 200
@@ -286,15 +279,15 @@ def process(carrier_path, modulator_path, output_path, custom_frame_length, matc
             while current_index > 0:
                 current_index -= 1
                 frames = frames2[current_index]
-                select_string = "'eq(n\\," + ")+eq(n\\,".join(frames) + ")'"
+                select_string = "select='eq(n\\," + ")+eq(n\\,".join(frames) + ")'"
         
                 call = video_out.apply_color_mode([
                         'ffmpeg',
                         '-v', 'quiet', '-stats',
                         '-i', str(carrier_path),
-                        '-vf', 'select=' + select_string,
-                        '-vsync', '0',
                         'include_color_mode',
+                        '-vf', select_string,
+                        "-fps_mode", "passthrough",
                         str(frames_dir / 'frame%06d.png')
                 ],color_mode)
         
@@ -331,7 +324,6 @@ def process(carrier_path, modulator_path, output_path, custom_frame_length, matc
         )
 
 def main():
-    start = time.time()
     logging.basicConfig(format='%(message)s', level=logging.INFO)
 
     # check required command line tools
@@ -361,10 +353,6 @@ def main():
         global TEMP_DIR
         TEMP_DIR = Path(tempdir)
         process(**vars(args))
-
-    duration = time.time() - start
-
-    print(duration)
 
 
 if __name__ == '__main__':
