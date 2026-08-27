@@ -185,11 +185,11 @@ def get_audio_as_wav_bytes(path):
 
     return io.BytesIO(bytes(ff_out))
 
-def chunks(input_list, n):
-    output = []
+def chunks_of_n(input_list, n):
+    chunks = []
     for i in range(0, len(input_list), n):
-        output.append(input_list[i:n+i])
-    return output
+        chunks.append(input_list[i:n+i])
+    return chunks
 
 def process(carrier_path, modulator_path, output_path, custom_frame_length, matcher_mode, video_mode, color_mode, min_cached_frames):
     if not carrier_path.is_file():
@@ -244,52 +244,51 @@ def process(carrier_path, modulator_path, output_path, custom_frame_length, matc
     index_conversion = {}
 
     if 'video' in carrier_type:
-        chosen_frames = set(matcher.best_matches)
-        chosen_frames = sorted(chosen_frames)
-        frames2 = []
-        i = -1
-        our_index = 0
-        for frame in chosen_frames:
-            # No duplicates
-            frames2.append(str(frame))
-            index_conversion[frame] = our_index
-            our_index += 1
+        used_frames = sorted(set(matcher.best_matches))
+        index_conversion = {frame: our_index for our_index, frame in enumerate(used_frames)}
 
-        # Batch in chunks of 200 to ensure no excessive commmand lengths
-        n = 200
-        frames2 = chunks(frames2, n)
+        # Batch in chunks to ensure no excessive commmand lengths
+        n = 100
+        frame_chunks = chunks_of_n(list(index_conversion.keys()), n)
 
         output_is_audio = is_audio_filename(output_path)
         carrier_is_video = not output_is_audio
     
         if not output_is_audio and not video_in_mem:
-            logging.info("Separating video frames")
+            logging.info("Extracting required frames:")
             frames_dir = TEMP_DIR / 'frames'
             frames_dir.mkdir()
 
             i = 0
-            current_index = len(frames2)
+            chunk_count = len(frame_chunks)
+            current_index = chunk_count
 
             # Iterate backwards for easier file renaming and no overwrites
             while current_index > 0:
                 current_index -= 1
-                frames = frames2[current_index]
-                select_string = "select='eq(n\\," + ")+eq(n\\,".join(frames) + ")'"
+                frame_strings = [str(frame) for frame in frame_chunks[current_index]]
+                select_string = "select='eq(n\\," + ")+eq(n\\,".join(frame_strings) + ")'"
         
                 call = video_out.apply_color_mode([
                         'ffmpeg',
-                        '-v', 'quiet', '-stats',
+                        '-v', 'quiet',
                         '-i', str(carrier_path),
                         'include_color_mode',
                         '-vf', select_string,
                         "-fps_mode", "passthrough",
                         str(frames_dir / 'frame%06d.png')
                 ],color_mode)
+
+                print(f"Decoding chunk {chunk_count - current_index} of {chunk_count}", end='\r')
         
                 subprocess.run(call,check=True)
 
-                for i in range(1, len(frames) + 1, 1):
-                    os.rename(frames_dir / ('frame%06d.png' % (i,)), frames_dir / ('frame%06d.png' % (i + (n * (current_index)),)))
+                for i in range(1, len(frame_strings) + 1, 1):
+                    os.rename(
+                        frames_dir / ('frame%06d.png' % (i,)),
+                        frames_dir / ('frame%06d.png' % (i + (n * (current_index)),))
+                    )
+            print() # free newline? how convenient
     
     elif 'audio' in carrier_type:
         carrier_is_video = False
