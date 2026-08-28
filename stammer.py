@@ -82,23 +82,19 @@ def get_duration(path):
 
 def get_framecount(path):
     result = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-select_streams",
-            "v:0",
-            "-count_packets",
-            "-show_entries",
-            "stream=nb_read_packets",
-            "-print_format",
-            "csv=p=0",
-            str(path),
-        ],
-        capture_output=True,
-        check=True,
-        text=True,
-    ).stdout
+            [
+                'ffprobe',
+                '-v', 'error',
+                '-select_streams', 'v:0',
+                '-count_packets',
+                '-show_entries', 'stream=nb_read_packets',
+                '-print_format', 'csv=p=0',
+                str(path)
+            ],
+            capture_output=True,
+            check=True,
+            text=True
+        ).stdout
     # To prevent the error "could not convert string to float: '5075\n\n5075\n'."
     return result.split("\n")[0]
 
@@ -152,7 +148,7 @@ def build_output_video(video_handler: VideoHandler, matcher, index_conversion):
                     carrier_video_frame -= 1
                 elif carrier_video_frame + 1 in index_conversion:
                     carrier_video_frame += 1
-            video_handler.write_frame(video_frame_i,video_handler.get_frame(index_conversion[carrier_video_frame]))
+            video_handler.write_frame(video_frame_i,video_handler.get_frame(carrier_video_frame))
 
     elif type(matcher) == CombinedFrameAudioMatcher:
         basis_coefficients = matcher.get_basis_coefficients()
@@ -267,7 +263,7 @@ def process(carrier_path, modulator_path, output_path, custom_frame_length, matc
 
         if not output_is_audio and not video_in_mem:
             logging.info("Extracting required frames:")
-            frames_dir = TEMP_DIR / "frames"
+            frames_dir = TEMP_DIR / 'frames'
             frames_dir.mkdir()
 
             i = 0
