@@ -16,8 +16,12 @@ from scipy.io import wavfile
 import fraction_bits
 import image_tiling
 import video_out
-from audio_matching import (BasicAudioMatcher, CombinedFrameAudioMatcher,
-                            UniqueAudioMatcher, WeightedAudioMatcher)
+from audio_matching import (
+    BasicAudioMatcher,
+    CombinedFrameAudioMatcher,
+    UniqueAudioMatcher,
+    WeightedAudioMatcher,
+)
 from video_out import VideoHandler, VideoHandlerDisk, VideoHandlerMem
 
 TEMP_DIR = Path("temp")
@@ -275,7 +279,7 @@ def process(
     if "video" in carrier_type:
 
         logging.info("Calculating video length")
-    
+
         carrier_framecount = float(get_framecount(carrier_path))
         video_frame_length = carrier_duration / carrier_framecount
         if custom_frame_length is None:
@@ -383,62 +387,6 @@ def process(
             print()  # free newline? how convenient
 
     elif "audio" in carrier_type:
-        carrier_is_video = False
-        if custom_frame_length is None:
-            frame_length = DEFAULT_FRAME_LENGTH
-        else:
-            frame_length = float(custom_frame_length)
-
-    index_conversion = {}
-
-    if 'video' in carrier_type:
-        used_frames = sorted(set(matcher.best_matches))
-        index_conversion = {frame: our_index for our_index, frame in enumerate(used_frames)}
-
-        # Batch in chunks to ensure no excessive commmand lengths
-        n = 100
-        frame_chunks = chunks_of_n(list(index_conversion.keys()), n)
-
-        output_is_audio = is_audio_filename(output_path)
-        carrier_is_video = not output_is_audio
-    
-        if not output_is_audio and not video_in_mem:
-            logging.info("Extracting required frames:")
-            frames_dir = TEMP_DIR / 'frames'
-            frames_dir.mkdir()
-
-            i = 0
-            chunk_count = len(frame_chunks)
-            current_index = chunk_count
-
-            # Iterate backwards for easier file renaming and no overwrites
-            while current_index > 0:
-                current_index -= 1
-                frame_strings = [str(frame) for frame in frame_chunks[current_index]]
-                select_string = "select='eq(n\\," + ")+eq(n\\,".join(frame_strings) + ")'"
-        
-                call = video_out.apply_color_mode([
-                        'ffmpeg',
-                        '-v', 'quiet',
-                        '-i', str(carrier_path),
-                        'include_color_mode',
-                        '-vf', select_string,
-                        "-fps_mode", "passthrough",
-                        str(frames_dir / 'frame%06d.png')
-                ],color_mode)
-
-                print(f"Decoding chunk {chunk_count - current_index} of {chunk_count}", end='\r')
-        
-                subprocess.run(call,check=True)
-
-                for i in range(1, len(frame_strings) + 1, 1):
-                    os.rename(
-                        frames_dir / ('frame%06d.png' % (i,)),
-                        frames_dir / ('frame%06d.png' % (i + (n * (current_index)),))
-                    )
-            print() # free newline? how convenient
-    
-    elif 'audio' in carrier_type:
         carrier_is_video = False
         if custom_frame_length is None:
             frame_length = DEFAULT_FRAME_LENGTH
