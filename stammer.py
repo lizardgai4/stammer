@@ -109,33 +109,27 @@ def build_output_video(video_handler: VideoHandler, matcher, index_conversion):
     def tesselate_composite(match_row, basis_coefficients, i):
         tiles: List[Image.Image] = []
         bits: List[List[int]] = []
-        used_coeffs = [
-            (j, coefficient)
-            for j, coefficient in enumerate(basis_coefficients)
-            if coefficient != 0
-        ]
+        used_coeffs = [(j, coefficient) for j, coefficient in enumerate(basis_coefficients) if coefficient != 0]
         for k, coeff in used_coeffs:
             frame_num = min(match_row[k], video_handler.framecount - 1)
             tiles.append(Image.open(video_handler.get_frame(frame_num)))
             hot_bits, _ = fraction_bits.as_array(coeff)
             bits.append(hot_bits)
-        tesselation = image_tiling.Tiling(height=tiles[0].height, width=tiles[0].width)
-        output_frame = Image.new("RGB", (tiles[0].width, tiles[0].height))
-        for m in np.arange(1, MAX_TESSELLATION_COUNT):
-            first_hot = next(
-                ((offset, x) for offset, x in enumerate(bits) if x[m]), None
-            )
+        tesselation = image_tiling.Tiling(height=tiles[0].height,width=tiles[0].width)
+        output_frame = Image.new('RGB',(tiles[0].width, tiles[0].height))
+        for m in np.arange(1,MAX_TESSELLATION_COUNT):
+            first_hot = next(((offset, x) for offset, x in enumerate(bits) if x[m]), None)
             if first_hot is not None:
                 do_tile = tesselation.needs_tiling
                 tb = tiles[first_hot[0]].copy()
                 x0, y0, w, h = tesselation.get_image_placement()
-                tb.thumbnail((w, h))
-                output_frame.paste(tb, (x0, y0))
+                tb.thumbnail((w,h))
+                output_frame.paste(tb, (x0,y0))
                 if do_tile:
-                    output_frame.paste(tb, (x0, y0 + tb.height))
+                    output_frame.paste(tb,(x0, y0 + tb.height))
 
         img_bytes = io.BytesIO()
-        output_frame.save(img_bytes, format="PNG")
+        output_frame.save(img_bytes,format="PNG")
         video_handler.write_frame(i, img_bytes)
 
     video_frame_length = video_handler.frame_length
@@ -147,26 +141,18 @@ def build_output_video(video_handler: VideoHandler, matcher, index_conversion):
         for video_frame_i in range(video_handler.best_match_count):
             elapsed_time = video_frame_i * video_frame_length
             audio_frame_i = int(elapsed_time / audio_frame_length)
-            time_past_start_of_audio_frame = elapsed_time - (
-                audio_frame_i * audio_frame_length
-            )
+            time_past_start_of_audio_frame = elapsed_time - (audio_frame_i * audio_frame_length)
             match_num = best_matches[audio_frame_i]
-            elapsed_time_in_carrier = (
-                match_num * audio_frame_length + time_past_start_of_audio_frame
-            )
+            elapsed_time_in_carrier = match_num * audio_frame_length + time_past_start_of_audio_frame
             carrier_video_frame = int(elapsed_time_in_carrier / video_frame_length)
-            carrier_video_frame = min(
-                carrier_video_frame, int(video_handler.framecount - 1)
-            )
+            carrier_video_frame = min(carrier_video_frame, int(video_handler.framecount - 1))
             # To correct for division errors:
             if carrier_video_frame not in index_conversion:
                 if carrier_video_frame - 1 in index_conversion:
                     carrier_video_frame -= 1
                 elif carrier_video_frame + 1 in index_conversion:
                     carrier_video_frame += 1
-            video_handler.write_frame(
-                video_frame_i, video_handler.get_frame(carrier_video_frame)
-            )
+            video_handler.write_frame(video_frame_i,video_handler.get_frame(index_conversion[carrier_video_frame]))
 
     elif type(matcher) == CombinedFrameAudioMatcher:
         basis_coefficients = matcher.get_basis_coefficients()
@@ -229,9 +215,9 @@ def process(carrier_path, modulator_path, output_path, custom_frame_length, matc
     video_in_mem = (video_mode == "mem_decay")
 
     if 'video' in carrier_type:
-    
+
         logging.info("Calculating video length")
-    
+
         carrier_framecount = float(get_framecount(carrier_path))
         video_frame_length = carrier_duration / carrier_framecount
         if custom_frame_length is None:
@@ -268,12 +254,9 @@ def process(carrier_path, modulator_path, output_path, custom_frame_length, matc
 
     index_conversion = {}
 
-
-    if "video" in carrier_type:
+    if 'video' in carrier_type:
         used_frames = sorted(set(matcher.best_matches))
-        index_conversion = {
-            frame: our_index for our_index, frame in enumerate(used_frames)
-        }
+        index_conversion = {frame: our_index for our_index, frame in enumerate(used_frames)}
 
         # Batch in chunks to ensure no excessive commmand lengths
         n = 100
@@ -293,33 +276,21 @@ def process(carrier_path, modulator_path, output_path, custom_frame_length, matc
             # Iterate backwards for easier file renaming and no overwrites
             for current_index, chunk in reversed(list(enumerate(frame_chunks))):
                 frame_strings = [str(frame) for frame in chunk]
-                select_string = (
-                    "select='eq(n\\," + ")+eq(n\\,".join(frame_strings) + ")'"
-                )
+                select_string = "select='eq(n\\," + ")+eq(n\\,".join(frame_strings) + ")'"
+        
+                call = video_out.apply_color_mode([
+                        'ffmpeg',
+                        '-v', 'quiet',
+                        '-i', str(carrier_path),
+                        'include_color_mode',
+                        '-vf', select_string,
+                        "-fps_mode", "passthrough",
+                        str(frames_dir / 'frame%06d.png')
+                ],color_mode)
 
-                call = video_out.apply_color_mode(
-                    [
-                        "ffmpeg",
-                        "-v",
-                        "quiet",
-                        "-i",
-                        str(carrier_path),
-                        "include_color_mode",
-                        "-vf",
-                        select_string,
-                        "-fps_mode",
-                        "passthrough",
-                        str(frames_dir / "frame%06d.png"),
-                    ],
-                    color_mode,
-                )
-
-                print(
-                    f"Decoding chunk {chunk_count - current_index} of {chunk_count}",
-                    end="\r",
-                )
-
-                subprocess.run(call, check=True)
+                print(f"Decoding chunk {chunk_count - current_index} of {chunk_count}", end='\r')
+        
+                subprocess.run(call,check=True)
 
                 for i, frame in reversed(list(enumerate(chunk))):
                     os.rename(
