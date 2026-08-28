@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class Side(Enum):
     LEFT = 1
     BOTTOM = 2
@@ -29,7 +30,7 @@ class Tiling:
         else:
             self.side = Side.BOTTOM
         self.needs_tiling = True
-        
+
     def get_image_placement(self):
         pos_height, pos_width, pos_x0, pos_y0 = None, None, None, None
         if self.side in [Side.LEFT, Side.RIGHT]:
