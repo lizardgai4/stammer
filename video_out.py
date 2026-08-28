@@ -176,7 +176,7 @@ class VideoHandlerDisk(VideoHandler):
     def get_frame(self, idx):
         super().get_frame(idx)
 
-        # Video frames start at 1, not 0
+        # Video frame filenames start at 1, not 0
         idx += 1
         return open(self.frames_dir / f"frame{idx:06d}.png", "rb")
 
