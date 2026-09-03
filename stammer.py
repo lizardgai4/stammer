@@ -273,7 +273,7 @@ def process(carrier_path, modulator_path, output_path, custom_frame_length, matc
             for current_index, chunk in reversed(list(enumerate(frame_chunks))):
                 frame_strings = [str(frame) for frame in chunk]
                 select_string = "select='eq(n\\," + ")+eq(n\\,".join(frame_strings) + ")'"
-        
+
                 call = video_out.apply_color_mode([
                         'ffmpeg',
                         '-v', 'quiet',
@@ -285,7 +285,7 @@ def process(carrier_path, modulator_path, output_path, custom_frame_length, matc
                 ],color_mode)
 
                 print(f"Decoding chunk {chunk_count - current_index} of {chunk_count}", end='\r')
-        
+
                 subprocess.run(call,check=True)
 
                 for i, frame in reversed(list(enumerate(chunk))):
