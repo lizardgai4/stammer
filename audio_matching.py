@@ -3,6 +3,12 @@ from scipy.io import wavfile
 from scipy.optimize import linear_sum_assignment
 import logging
 
+try:
+    from scipy.fft import rfft as _rfft
+    def _fft(x):
+        return _rfft(x, workers=-1) # multithreaded FFT
+except ImportError:
+    _fft = np.fft.rfft
 
 class AudioMatcher:
     # Base Class
@@ -36,7 +42,7 @@ class AudioMatcher:
         return frames
 
     def make_normalized_bands(self, frames_input):
-        transforms = np.fft.rfft(frames_input)
+        transforms = _fft(frames_input)
         spectra = abs(transforms[:,1:])
         split_points = [0]
         i = 2
@@ -193,6 +199,7 @@ class UniqueAudioMatcher(BasicAudioMatcher):
         row_ind, col_ind = linear_sum_assignment(cost_matrix, maximize=True)
         self.best_matches = col_ind
 
+
 class WeightedAudioMatcher(BasicAudioMatcher):
     def r_a(self, f):
         f_sq = f**2
@@ -204,7 +211,7 @@ class WeightedAudioMatcher(BasicAudioMatcher):
         return self.r_a(f) / self.r_a(1000)
 
     def make_normalized_bands(self, frames_input):
-        spectra = np.abs(np.fft.rfft(frames_input)[:, 1:])
+        spectra = np.abs(_fft(frames_input)[:, 1:])
         norm = np.linalg.norm(spectra, axis=1, keepdims=True)
         np.clip(norm, 1e-8, None, out=norm)
 
