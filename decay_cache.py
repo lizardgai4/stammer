@@ -49,4 +49,3 @@ class DecayCache:
 
     def set_item(self,i: int,item):
         self.items[i] = DecayItem(item,self.decay)
-    
