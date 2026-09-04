@@ -14,7 +14,6 @@ import logging
 
 from audio_matching import BasicAudioMatcher, CombinedFrameAudioMatcher, UniqueAudioMatcher, WeightedAudioMatcher
 
-import video_out
 from video_out import VideoHandler, VideoHandlerDisk, VideoHandlerMem, VideoHandlerDummyCollector
 from video_builder import VideoBuilderBasic, VideoBuilderCombined
 
