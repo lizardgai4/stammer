@@ -100,7 +100,7 @@ def get_duration(path):
         ).stdout
 
 def get_framecount(path):
-    return subprocess.run(
+    result = subprocess.run(
             [
                 'ffprobe',
                 '-v', 'error',
@@ -114,6 +114,8 @@ def get_framecount(path):
             check=True,
             text=True
         ).stdout
+    # Prevent the error "ValueError: could not convert string to float: '56\n\n56\n'"
+    return result.split("\n")[0]
 
 
 
