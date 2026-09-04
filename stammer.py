@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
 from argparse import ArgumentParser
-from typing import List
+
 from scipy.io import wavfile
 from pathlib import Path
 import subprocess
 import io
-import os
+
 
 import tempfile
 import logging
