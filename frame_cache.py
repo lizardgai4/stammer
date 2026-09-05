@@ -1,17 +1,7 @@
 from collections import OrderedDict
 
-class DecayItem:
-    item = None
-    timer: int = 0
-
-    def __init__(self,
-                 item = None,
-                 timer: int = 0):
-        self.item = item
-        self.timer = timer
-
 class LRUCache:
-    items: OrderedDict[int, DecayItem] = OrderedDict()
+    items: OrderedDict[int, bytes] = OrderedDict()
     max_bytes: int = 100 << 20
     current_bytes: int = 0
 
