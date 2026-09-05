@@ -6,7 +6,7 @@ from scipy.io import wavfile
 from pathlib import Path
 import subprocess
 import io
-
+import re
 
 import tempfile
 import logging
@@ -114,7 +114,7 @@ def get_framecount(path):
             text=True
         ).stdout
     # Prevent the error "ValueError: could not convert string to float: '56\n\n56\n'"
-    return result.split("\n")[0]
+    return re.findall(r"\d+",result)[0]
 
 
 
